@@ -1932,6 +1932,7 @@ pub const Set = struct {
             const cp = it.nextCodepoint() orelse break :unicode;
             if (it.nextCodepoint() != null) break :unicode;
 
+            trigger.mods = event.effectiveMods().binding();
             trigger.key = .{ .unicode = cp };
             if (self.get(trigger)) |v| return v;
         }
@@ -1941,6 +1942,7 @@ pub const Set = struct {
         // suspect "no" but we don't currently have any failing scenarios
         // to verify this.
         if (event.unshifted_codepoint > 0) {
+            trigger.mods = event.mods.binding();
             trigger.key = .{ .unicode = event.unshifted_codepoint };
             if (self.get(trigger)) |v| return v;
         }
@@ -2999,6 +3001,45 @@ test "set: getEvent codepoint case folding" {
             .mods = .{ .ctrl = true },
         });
         try testing.expect(action == null);
+    }
+}
+test "set: getEvent consumed shift without case folding" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var s: Set = .{};
+    defer s.deinit(alloc);
+
+    // $ is shift+4 on ANSI US, but unlike case folding, this correspondence is
+    // contingent on keyboard layout. On certain layouts, $ is its own key and.
+    // To correctly match across layouts, we therefore need `utf8` to contain
+    // the possibly shifted text "$", regardless of what the physical keys,
+    // modifiers, and unshifted codepoints are, and we need `consumed_mods` to
+    // specify the subset of `mods` that map the physical key to "$" such that
+    // we know to disregard these during utf8 matching.
+    try s.parseAndPut(alloc, "ctrl+$=new_window");
+
+    // Doesn't match on physical key or unshifted codepoint
+    {
+        const action = s.getEvent(.{
+            .key = .digit_4,
+            .mods = .{ .shift = true, .ctrl = true },
+            .utf8 = "",
+            .unshifted_codepoint = '4',
+        });
+        try testing.expect(action == null);
+    }
+
+    // Matches on shifted text with corresponding consumed_mods
+    {
+        const action = s.getEvent(.{
+            .key = .digit_4,
+            .mods = .{ .shift = true, .ctrl = true },
+            .consumed_mods = .{ .shift = true },
+            .utf8 = "$",
+            .unshifted_codepoint = '4',
+        }).?.value_ptr.*.leaf;
+        try testing.expect(action.action == .new_window);
     }
 }
 test "Action: clone" {
