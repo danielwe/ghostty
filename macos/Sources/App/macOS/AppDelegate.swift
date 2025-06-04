@@ -592,10 +592,13 @@ class AppDelegate: NSObject,
         // because we let it capture and propagate.
         guard NSApp.mainWindow == nil else { return event }
 
+        var ghosttyEvent = event.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)
+        let consumedModifierFlags = Ghostty.eventModifierFlags(mods: ghosttyEvent.consumed_mods)
+        let text = event.characters(byApplyingModifiers: consumedModifierFlags) ?? ""
+
         // If this event as-is would result in a key binding then we send it.
         if let app = ghostty.app {
-            var ghosttyEvent = event.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)
-            let match = (event.characters ?? "").withCString { ptr in
+            let match = text.withCString { ptr in
                 ghosttyEvent.text = ptr
                 if !ghostty_app_key_is_binding(app, ghosttyEvent) {
                     return false
@@ -626,8 +629,14 @@ class AppDelegate: NSObject,
         guard let ghostty = self.ghostty.app else { return event }
 
         // Build our event input and call ghostty
-        if (ghostty_app_key(ghostty, event.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS))) {
-            // The key was used so we want to stop it from going to our Mac app
+        let match = text.withCString { ptr in
+            ghosttyEvent.text = ptr
+            if ghostty_app_key(ghostty, ghosttyEvent) {
+                return true
+            }
+            return false
+        }
+        if match {
             Ghostty.logger.debug("local key event handled event=\(event)")
             return nil
         }

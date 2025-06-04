@@ -1973,7 +1973,13 @@ pub const Set = struct {
         };
         if (self.get(trigger)) |v| return v;
 
-        // If our UTF-8 text is exactly one codepoint, we try to match that.
+        // Try to match the full unshifted codepoint if we have one.
+        if (event.unshifted_codepoint > 0) {
+            trigger.key = .{ .unicode = event.unshifted_codepoint };
+            if (self.get(trigger)) |v| return v;
+        }
+
+        // Finally fallback to UTF-8 text if it is exactly one codepoint.
         if (event.utf8.len > 0) unicode: {
             const view = std.unicode.Utf8View.init(event.utf8) catch break :unicode;
             var it = view.iterator();
@@ -1982,19 +1988,10 @@ pub const Set = struct {
             const cp = it.nextCodepoint() orelse break :unicode;
             if (it.nextCodepoint() != null) break :unicode;
 
+            trigger.mods = event.effectiveMods().binding();
             trigger.key = .{ .unicode = cp };
             if (self.get(trigger)) |v| return v;
         }
-
-        // Finally fallback to the full unshifted codepoint if we have one.
-        // Question: should we be doing this if we have UTF-8 text? I
-        // suspect "no" but we don't currently have any failing scenarios
-        // to verify this.
-        if (event.unshifted_codepoint > 0) {
-            trigger.key = .{ .unicode = event.unshifted_codepoint };
-            if (self.get(trigger)) |v| return v;
-        }
-
         return null;
     }
 
@@ -3075,6 +3072,70 @@ test "set: getEvent codepoint case folding" {
             .mods = .{ .ctrl = true },
         });
         try testing.expect(action == null);
+    }
+}
+
+test "set: getEvent consumed shift without case folding" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var s: Set = .{};
+    defer s.deinit(alloc);
+
+    // $ is shift+4 on ANSI US, but unlike case folding, this correspondence is
+    // contingent on keyboard layout. On certain layouts, $ is its own key and.
+    // To correctly match across layouts, we therefore need `utf8` to contain
+    // the possibly shifted text "$", regardless of what the physical keys,
+    // modifiers, and unshifted codepoints are, and we need `consumed_mods` to
+    // specify the subset of `mods` that map the physical key to "$" such that
+    // we know to disregard these during utf8 matching.
+    try s.parseAndPut(alloc, "ctrl+$=new_window");
+
+    // Doesn't match on physical key or unshifted codepoint
+    {
+        const action = s.getEvent(.{
+            .key = .digit_4,
+            .mods = .{ .shift = true, .ctrl = true },
+            .utf8 = "",
+            .unshifted_codepoint = '4',
+        });
+        try testing.expect(action == null);
+    }
+
+    // Matches on shifted text with corresponding consumed_mods
+    {
+        const action = s.getEvent(.{
+            .key = .digit_4,
+            .mods = .{ .shift = true, .ctrl = true },
+            .consumed_mods = .{ .shift = true },
+            .utf8 = "$",
+            .unshifted_codepoint = '4',
+        }).?.value_ptr.*.leaf;
+        try testing.expect(action.action == .new_window);
+    }
+}
+test "set: getEvent consumed shift with case folding" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var s: Set = .{};
+    defer s.deinit(alloc);
+
+    // When shift is consumed to make an uppercase letter, make sure a trigger
+    // sequence containing shift+<the letter> takes precedence over one
+    // containing only <the letter> (both count as matches due to case folding)
+    try s.parseAndPut(alloc, "ctrl+d=new_window");
+    try s.parseAndPut(alloc, "ctrl+shift+d=new_tab");
+
+    {
+        const action = s.getEvent(.{
+            .key = .key_d,
+            .mods = .{ .shift = true, .ctrl = true },
+            .consumed_mods = .{ .shift = true },
+            .utf8 = "D",
+            .unshifted_codepoint = 'd',
+        }).?.value_ptr.*.leaf;
+        try testing.expect(action.action == .new_tab);
     }
 }
 
