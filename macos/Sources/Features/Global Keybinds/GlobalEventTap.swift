@@ -141,9 +141,18 @@ fileprivate func cgEventFlagsChangedHandler(
     guard let event: NSEvent = .init(cgEvent: cgEvent) else { return result }
 
     // Build our event input and call ghostty
-    let key_ev = event.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)
-    if (ghostty_app_key(ghostty, key_ev)) {
-        GlobalEventTap.logger.info("global key event handled event=\(event)")
+    var key_ev = event.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)
+    let consumedModifierFlags = Ghostty.eventModifierFlags(mods: key_ev.consumed_mods)
+    let text = event.characters(byApplyingModifiers: consumedModifierFlags) ?? ""
+    let match = text.withCString { ptr in
+        key_ev.text = ptr
+        if (ghostty_app_key(ghostty, key_ev)) {
+            GlobalEventTap.logger.info("global key event handled event=\(event)")
+            return true
+        }
+        return false
+    }
+    if match {
         return nil
     }
 

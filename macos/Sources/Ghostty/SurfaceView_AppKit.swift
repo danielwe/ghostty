@@ -1093,7 +1093,9 @@ extension Ghostty {
             // If this event as-is would result in a key binding then we send it.
             if let surface {
                 var ghosttyEvent = event.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)
-                let match = (event.characters ?? "").withCString { ptr in
+                let consumedModifierFlags = Ghostty.eventModifierFlags(mods: ghosttyEvent.consumed_mods)
+                let text = event.characters(byApplyingModifiers: consumedModifierFlags) ?? ""
+                let match = text.withCString { ptr in
                     ghosttyEvent.text = ptr
                     return ghostty_surface_key_is_binding(surface, ghosttyEvent)
                 }
