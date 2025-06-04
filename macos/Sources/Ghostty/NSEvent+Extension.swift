@@ -23,14 +23,8 @@ extension NSEvent {
         key_ev.text = nil
         key_ev.composing = false
 
-        // macOS provides no easy way to determine the consumed modifiers for
-        // producing text. We apply a simple heuristic here that has worked for years
-        // so far: control and command never contribute to the translation of text,
-        // assume everything else did.
         key_ev.mods = Ghostty.ghosttyMods(modifierFlags)
-        key_ev.consumed_mods = Ghostty.ghosttyMods(
-            (translationMods ?? modifierFlags)
-                .subtracting([.control, .command]))
+        key_ev.consumed_mods = Ghostty.ghosttyMods(consumedModifierFlags(translationMods: translationMods))
 
         // Our unshifted codepoint is the codepoint with no modifiers. We
         // ignore multi-codepoint values. We have to use `byApplyingModifiers`
@@ -58,13 +52,6 @@ extension NSEvent {
 
         if characters.count == 1,
            let scalar = characters.unicodeScalars.first {
-            // If we have a single control character, then we return the characters
-            // without control pressed. We do this because we handle control character
-            // encoding directly within Ghostty's KeyEncoder.
-            if scalar.value < 0x20 {
-                return self.characters(byApplyingModifiers: modifierFlags.subtracting(.control))
-            }
-
             // If we have a single value in the PUA, then it's a function key and
             // we don't want to send PUA ranges down to Ghostty.
             if scalar.value >= 0xF700 && scalar.value <= 0xF8FF {
@@ -72,6 +59,20 @@ extension NSEvent {
             }
         }
 
-        return characters
+        // In general, the text should reflect the consumed modifiers.
+        //
+        // Since control is never among the consumed modifiers, this also ensures
+        // that we avoid sending control characters directly to Ghostty. This is
+        // important because we want to handle control character encoding directly
+        // within Ghostty's KeyEncoder.
+        return self.characters(byApplyingModifiers: consumedModifierFlags())
+    }
+
+    // macOS provides no easy way to determine the consumed modifiers for
+    // producing text. We apply a simple heuristic here that has worked for years
+    // so far: control and command never contribute to the translation of text,
+    // assume everything else did.
+    fileprivate func consumedModifierFlags(translationMods: NSEvent.ModifierFlags? = nil) -> NSEvent.ModifierFlags {
+        return (translationMods ?? modifierFlags).subtracting([.control, .command])
     }
 }
