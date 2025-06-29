@@ -16,6 +16,11 @@ pub const Type = enum {
 /// Any output on stderr is logged as a warning in the application logs.
 /// Output on stdout is ignored. The allocator is used to buffer the
 /// log output and may allocate from another thread.
+///
+/// The allocator should not be an arena or any other type of allocator
+/// that can unilaterally free its allocations from a different scope,
+/// as the allocator and memory managed through it may remain in use on
+/// a background thread after this function has returned.
 pub fn open(
     alloc: Allocator,
     typ: Type,
