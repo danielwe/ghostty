@@ -58,6 +58,13 @@ pub fn open(
     // quickly.
     try exe.spawn();
 
+    // exe.argv points to a stack variable that goes out of scope when
+    // this function returns, while exe lives on in a background thread.
+    // Since we've already called spawn(), argv shouldn't be needed
+    // anymore, so there's no need to extend its lifetime, but for good
+    // hygiene we replace the dangling pointer with an empty literal.
+    exe.argv = &.{};
+
     // Create a thread that handles collecting output and reaping
     // the process. This is done in a separate thread because SOME
     // open implementations block and some do not. It's easier to just
