@@ -136,10 +136,8 @@ pub const RenderOptions = struct {
         /// Don't constrain the glyph in any way.
         pub const none: Constraint = .{};
 
-        /// Vertical sizing rule.
-        size_vertical: Size = .none,
-        /// Horizontal sizing rule.
-        size_horizontal: Size = .none,
+        /// Sizing rule.
+        size: Size = .none,
 
         /// Vertical alignment rule.
         align_vertical: Align = .none,
@@ -155,42 +153,36 @@ pub const RenderOptions = struct {
         /// Bottom padding when resizing.
         pad_bottom: f64 = 0.0,
 
-        // This acts as a multiple of the provided width when applying
-        // constraints, so if this is 1.6 for example, then a width of
-        // 10 would be treated as though it were 16.
-        group_width: f64 = 1.0,
-        // This acts as a multiple of the provided height when applying
-        // constraints, so if this is 1.6 for example, then a height of
-        // 10 would be treated as though it were 16.
-        group_height: f64 = 1.0,
-        // This is an x offset for the actual width within the group width.
-        // If this is 0.5 then the glyph will be offset so that its left
-        // edge sits at the halfway point of the group width.
-        group_x: f64 = 0.0,
-        // This is a y offset for the actual height within the group height.
-        // If this is 0.5 then the glyph will be offset so that its bottom
-        // edge sits at the halfway point of the group height.
-        group_y: f64 = 0.0,
+        // Relative size and position of the glyph within the bounding box of its scale group.
+        width_in_group: f64 = 1.0,
+        height_in_group: f64 = 1.0,
+        x_in_group: f64 = 0.0,
+        y_in_group: f64 = 0.0,
 
-        /// Maximum ratio of width to height when resizing.
+        /// Maximum aspect ratio (width/height) to allow when stretching.
         max_xy_ratio: ?f64 = null,
 
         /// Maximum number of cells horizontally to use.
         max_constraint_width: u2 = 2,
 
-        /// What to use as the height metric when constraining the glyph.
-        height: Height = .cell,
+        /// Whether to resize with respect to the icon height instead of the line height.
+        /// Only applies when the constraint width is 1.
+        use_icon_height: bool = false,
+
+        /// Whether to apply horizontal alignment to the scale group or the glyph itself.
+        align_horizontal_by_group: bool = false,
 
         pub const Size = enum {
             /// Don't change the size of this glyph.
             none,
-            /// Move the glyph and optionally scale it down
-            /// proportionally to fit within the given axis.
+            /// Downscale the glyph if needed to fit within the bounds,
+            /// preserving aspect ratio. If the constraint width is 1,
+            /// also scale up like fit
+            limit,
+            /// Scale the glyph up or down to exactly fit the bounds,
+            /// preserving aspect ratio.
             fit,
-            /// Move and resize the glyph proportionally to
-            /// cover the given axis.
-            cover,
-            /// Same as `cover` but not proportional.
+            /// Stretch the glyph to exactly fit the bounds.
             stretch,
         };
 
@@ -203,184 +195,200 @@ pub const RenderOptions = struct {
             /// Move the glyph so that its trailing (top/right)
             /// edge aligns with the trailing edge of the axis.
             end,
-            /// Move the glyph so that it is centered on this axis.
+            /// Move the glyph so that it is centered in its
+            /// constraint width
             center,
+            /// Move the glyph so that it is centered in the first
+            /// cell of its constraint width
+            center_first,
         };
 
-        pub const Height = enum {
-            /// Use the full height of the cell for constraining this glyph.
-            cell,
-            /// Use the "icon height" from the grid metrics as the height.
-            icon,
-        };
-
-        /// The size and position of a glyph.
-        pub const GlyphSize = struct {
+        /// Bounding box representing a size and position on the cell grid
+        pub const Glyph = struct {
             width: f64,
             height: f64,
             x: f64,
             y: f64,
         };
 
+        fn scale_factors(
+            self: Constraint,
+            group: Glyph,
+            metrics: Metrics,
+            min_constraint_width: u2,
+        ) struct { f64, f64 } {
+            if (self.size == .none) {
+                return .{ 1.0, 1.0 };
+            }
+
+            const is_single_width = (min_constraint_width < 2);
+            const pad_width_factor = @as(f64, @floatFromInt(min_constraint_width)) - (self.pad_left + self.pad_right);
+            const pad_height_factor = 1 - (self.pad_bottom + self.pad_top);
+            const target_width = pad_width_factor * metrics.face_width;
+            const target_height = pad_height_factor * if (is_single_width and self.use_icon_height)
+                metrics.icon_height
+            else
+                metrics.face_height;
+
+            var width_factor = target_width / group.width;
+            var height_factor = target_height / group.height;
+
+            switch (self.size) {
+                .none => unreachable,
+                .limit => {
+                    // Scale down to fit if needed
+                    width_factor = @min(width_factor, height_factor);
+                    if (!is_single_width) {
+                        // For double-width constraints, we only scale down.
+                        // font_patcher also considers whether there's overlap (negative
+                        // padding) here, but our preprocessing would set self.size to
+                        // .fit if that were the case.
+                        width_factor = @min(1.0, width_factor);
+                    }
+                    height_factor = width_factor;
+                },
+                .fit => {
+                    // Scale up or down to fit
+                    width_factor = @min(width_factor, height_factor);
+                    height_factor = width_factor;
+                },
+                .stretch => {},
+            }
+
+            // Reduce aspect ratio if required
+            if (self.max_xy_ratio) |ratio| {
+                if (group.width * width_factor > group.height * height_factor * ratio) {
+                    width_factor = group.height * height_factor * ratio / group.width;
+                }
+            }
+
+            return .{ width_factor, height_factor };
+        }
+
         /// Apply this constraint to the provided glyph
         /// size, given the available width and height.
         pub fn constrain(
             self: Constraint,
-            glyph: GlyphSize,
+            glyph: Glyph,
             metrics: Metrics,
             /// Number of cells horizontally available for this glyph.
             constraint_width: u2,
-        ) GlyphSize {
-            var g = glyph;
-
-            const available_width: f64 = @floatFromInt(
-                metrics.cell_width * @min(
-                    self.max_constraint_width,
-                    constraint_width,
-                ),
-            );
-            const available_height: f64 = @floatFromInt(switch (self.height) {
-                .cell => metrics.cell_height,
-                .icon => metrics.icon_height,
-            });
-
-            const w = available_width -
-                self.pad_left * available_width -
-                self.pad_right * available_width;
-            const h = available_height -
-                self.pad_top * available_height -
-                self.pad_bottom * available_height;
-
-            // Subtract padding from the bearings so that our
-            // alignment and sizing code works correctly. We
-            // re-add before returning.
-            g.x -= self.pad_left * available_width;
-            g.y -= self.pad_bottom * available_height;
-
-            // Multiply by group width and height for better sizing.
-            g.width *= self.group_width;
-            g.height *= self.group_height;
-
-            switch (self.size_horizontal) {
-                .none => {},
-                .fit => if (g.width > w) {
-                    const orig_height = g.height;
-                    // Adjust our height and width to proportionally
-                    // scale them to fit the glyph to the cell width.
-                    g.height *= w / g.width;
-                    g.width = w;
-                    // Set our x to 0 since anything else would mean
-                    // the glyph extends outside of the cell width.
-                    g.x = 0;
-                    // Compensate our y to keep things vertically
-                    // centered as they're scaled down.
-                    g.y += (orig_height - g.height) / 2;
-                } else if (g.width + g.x > w) {
-                    // If the width of the glyph can fit in the cell but
-                    // is currently outside due to the left bearing, then
-                    // we reduce the left bearing just enough to fit it
-                    // back in the cell.
-                    g.x = w - g.width;
-                } else if (g.x < 0) {
-                    g.x = 0;
-                },
-                .cover => {
-                    const orig_height = g.height;
-
-                    g.height *= w / g.width;
-                    g.width = w;
-
-                    g.x = 0;
-
-                    g.y += (orig_height - g.height) / 2;
-                },
-                .stretch => {
-                    g.width = w;
-                    g.x = 0;
-                },
+        ) Glyph {
+            if ((self.size == .none) and (self.align_vertical == .none) and (self.align_horizontal == .none)) {
+                return glyph;
             }
 
-            switch (self.size_vertical) {
-                .none => {},
-                .fit => if (g.height > h) {
-                    const orig_width = g.width;
-                    // Adjust our height and width to proportionally
-                    // scale them to fit the glyph to the cell height.
-                    g.width *= h / g.height;
-                    g.height = h;
-                    // Set our y to 0 since anything else would mean
-                    // the glyph extends outside of the cell height.
-                    g.y = 0;
-                    // Compensate our x to keep things horizontally
-                    // centered as they're scaled down.
-                    g.x += (orig_width - g.width) / 2;
-                } else if (g.height + g.y > h) {
-                    // If the height of the glyph can fit in the cell but
-                    // is currently outside due to the bottom bearing, then
-                    // we reduce the bottom bearing just enough to fit it
-                    // back in the cell.
-                    g.y = h - g.height;
-                } else if (g.y < 0) {
-                    g.y = 0;
-                },
-                .cover => {
-                    const orig_width = g.width;
-
-                    g.width *= h / g.height;
-                    g.height = h;
-
-                    g.y = 0;
-
-                    g.x += (orig_width - g.width) / 2;
-                },
-                .stretch => {
-                    g.height = h;
-                    g.y = 0;
-                },
-            }
-
-            // Add group-relative position
-            g.x += self.group_x * g.width;
-            g.y += self.group_y * g.height;
-
-            // Divide group width and height back out before we align.
-            g.width /= self.group_width;
-            g.height /= self.group_height;
-
-            if (self.max_xy_ratio) |ratio| if (g.width > g.height * ratio) {
-                const orig_width = g.width;
-                g.width = g.height * ratio;
-                g.x += (orig_width - g.width) / 2;
+            // The bounding box for the glyph's scale group.
+            // Scaling and alignment rules are calculated for this box and
+            // then then applied to the glyph.
+            var group: Glyph = group: {
+                const group_width = glyph.width / self.width_in_group;
+                const group_height = glyph.height / self.height_in_group;
+                break :group .{
+                    .width = group_width,
+                    .height = group_height,
+                    .x = glyph.x - (group_width * self.x_in_group),
+                    .y = glyph.y - (group_height * self.y_in_group),
+                };
             };
 
-            switch (self.align_horizontal) {
-                .none => {},
-                .start => g.x = 0,
-                .end => g.x = w - g.width,
-                .center => g.x = (w - g.width) / 2,
+            const min_constraint_width: u2 = min_constraint_width: {
+                // For extra wide font faces, never stretch glyphs across two cells
+                if ((self.size == .stretch) and (metrics.face_width > 0.9 * metrics.face_height)) {
+                    break :min_constraint_width 1;
+                }
+                break :min_constraint_width @min(self.max_constraint_width, constraint_width);
+            };
+
+            // The constrained glyph bounding box
+            var constrained_glyph = glyph;
+
+            // Apply prescribed scaling
+            const width_factor, const height_factor = self.scale_factors(group, metrics, min_constraint_width);
+            if ((width_factor != 1) or (height_factor != 1)) {
+                constrained_glyph.width *= width_factor;
+                constrained_glyph.height *= height_factor;
+                constrained_glyph.x *= width_factor;
+                // constrained_glyph.y *= height_factor;
+
+                // NOTE: Here, font_patcher adds a slight extra padding to the
+                // width, rounds to integer in font definition units, and, if
+                // constraints are single-width, triple checks that the width is
+                // within the constraints, adjusting as necessary. This is
+                // relevant when statically patching a font file, where metrics
+                // are saved in integer-valued font definition units, but not
+                // when doing floating-point valued pixel unit calculations for
+                // rendering, so we don't bother with any of that here.
+
+                // Scale the group bounding box to prepare for alignment calculations
+                group.width *= width_factor;
+                group.height *= height_factor;
+                group.x *= width_factor;
+                // group.y *= height_factor;
+                // NOTE: This deviates from font_patcher by centering vertical
+                // scaling on the baseline rather than the lower left corner. In
+                // practice, it doesn't make any difference, as every single NF
+                // icon specifies centered vertical alignment.
+                const baseline: f64 = @floatFromInt(metrics.cell_baseline);
+                group.y = baseline + (height_factor * (group.y - baseline));
+                constrained_glyph.y = group.y + (self.y_in_group * group.height);
+            }
+            if (!self.align_horizontal_by_group) {
+                group.width = constrained_glyph.width;
+                group.x = constrained_glyph.x;
             }
 
-            switch (self.align_vertical) {
-                .none => {},
-                .start => g.y = 0,
-                .end => g.y = h - g.height,
-                .center => g.y = (h - g.height) / 2,
+            // Align
+            if (self.align_vertical != .none) {
+                // We want to center in the line as defined by the face, which may be
+                // different from the cell height if adjust-cell-height has been used.
+                // The extra padding is always rounded to an integer number of pixels,
+                // with the extra pixel added on top if the number is odd.
+                const cell_height: f64 = @floatFromInt(metrics.cell_height);
+                const line_height = @ceil(metrics.face_height);
+                const adjust_bottom = @floor((cell_height - line_height) / 2);
+                const pad_bottom = self.pad_bottom * metrics.face_height;
+                const pad_top = line_height - (self.pad_top * metrics.face_height);
+                const new_group_y = adjust_bottom + switch (self.align_vertical) {
+                    .none => unreachable,
+                    .center, .center_first => (line_height - group.height) / 2,
+                    // .start and .end are currently not used by any glyph for vertical alignment
+                    .start => pad_bottom,
+                    .end => pad_top - group.height,
+                };
+                constrained_glyph.y += new_group_y - group.y;
             }
 
-            // Re-add our padding before returning.
-            g.x += self.pad_left * available_width;
-            g.y += self.pad_bottom * available_height;
+            if (self.align_horizontal != .none) {
+                // Since we have the benefit of aligning with knowledge of the cell
+                // width adjustment, we improve on font_patcher here by aligning
+                // within the span from the left edge of the first unadjusted cell
+                // to the right edge of the last unadjusted cell, as they sit within
+                // the adjusted cell.
+                //
+                // If the adjusted cell is wider, the unadjusted cell is centered but
+                // rounded left to the nearest whole pixel. If it's narrower, the left
+                // edge of the unadjusted cell is flush with the adjusted cell.
+                const single_cell_width: f64 = @floatFromInt(metrics.cell_width);
+                const single_width = @ceil(metrics.face_width);
+                const diff = single_cell_width - single_width;
+                const adjust_left = @max(0, @floor(diff / 2));
+                const full_cell_width: f64 = @floatFromInt(min_constraint_width * metrics.cell_width);
+                const full_width: f64 = full_cell_width - diff;
+                const pad_left = self.pad_left * metrics.face_width;
+                const pad_right = full_width - self.pad_right * metrics.face_width;
+                const new_group_x = adjust_left + switch (self.align_horizontal) {
+                    .none => unreachable,
+                    .start => pad_left,
+                    // even with .center* and .end, there's a hard stop at pad_left
+                    .center => @max(pad_left, (full_width - group.width) / 2),
+                    .center_first => @max(pad_left, (single_width - group.width) / 2),
+                    .end => @max(pad_left, pad_right - group.width),
+                };
+                constrained_glyph.x += new_group_x - group.x;
+            }
 
-            // If the available height is less than the cell height, we
-            // add half of the difference to center it in the full height.
-            //
-            // If necessary, in the future, we can adjust this to account
-            // for alignment, but that isn't necessary with any of the nf
-            // icons afaict.
-            const cell_height: f64 = @floatFromInt(metrics.cell_height);
-            g.y += (cell_height - available_height) / 2;
-
-            return g;
+            return constrained_glyph;
         }
     };
 };

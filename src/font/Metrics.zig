@@ -35,8 +35,14 @@ cursor_thickness: u32 = 1,
 /// The height in pixels of the cursor sprite.
 cursor_height: u32,
 
-/// The constraint height for nerd fonts icons.
-icon_height: u32,
+/// The unrounded face width, used in scaling calculations.
+face_width: f64,
+
+/// The unrounded face height, used in scaling calculations.
+face_height: f64,
+
+/// The constraint height for single-width nerd fonts icons.
+icon_height: f64,
 
 /// Minimum acceptable values for some fields to prevent modifiers
 /// from being able to, for example, cause 0-thickness underlines.
@@ -49,7 +55,9 @@ const Minimums = struct {
     const box_thickness = 1;
     const cursor_thickness = 1;
     const cursor_height = 1;
-    const icon_height = 1;
+    const face_height = 1.0;
+    const face_width = 1.0;
+    const icon_height = 1.0;
 };
 
 /// Metrics extracted from a font face, based on
@@ -188,11 +196,13 @@ pub const FaceMetrics = struct {
 ///
 /// For any nullable options that are not provided, estimates will be used.
 pub fn calc(face: FaceMetrics) Metrics {
+    const face_height = face.lineHeight();
+
     // We use the ceiling of the provided cell width and height to ensure
     // that the cell is large enough for the provided size, since we cast
     // it to an integer later.
     const cell_width = @ceil(face.cell_width);
-    const cell_height = @ceil(face.lineHeight());
+    const cell_height = @ceil(face_height);
 
     // We split our line gap in two parts, and put half of it on the top
     // of the cell and the other half on the bottom, so that our text never
@@ -214,16 +224,8 @@ pub fn calc(face: FaceMetrics) Metrics {
     const underline_position = @round(top_to_baseline - face.underlinePosition());
     const strikethrough_position = @round(top_to_baseline - face.strikethroughPosition());
 
-    // The calculation for icon height in the nerd fonts patcher
-    // is two thirds cap height to one third line height, but we
-    // use an opinionated default of 1.2 * cap height instead.
-    //
-    // Doing this prevents fonts with very large line heights
-    // from having excessively oversized icons, and allows fonts
-    // with very small line heights to still have roomy icons.
-    //
-    // We do cap it at `cell_height` though for obvious reasons.
-    const icon_height = @min(cell_height, cap_height * 1.2);
+    // Same heuristic as the font_patcher script
+    const icon_height = (2 * cap_height + face_height) / 3;
 
     var result: Metrics = .{
         .cell_width = @intFromFloat(cell_width),
@@ -237,7 +239,9 @@ pub fn calc(face: FaceMetrics) Metrics {
         .overline_thickness = @intFromFloat(underline_thickness),
         .box_thickness = @intFromFloat(underline_thickness),
         .cursor_height = @intFromFloat(cell_height),
-        .icon_height = @intFromFloat(icon_height),
+        .face_width = face.cell_width,
+        .face_height = face_height,
+        .icon_height = icon_height,
     };
 
     // Ensure all metrics are within their allowable range.
@@ -381,26 +385,41 @@ pub const Modifier = union(enum) {
     /// Apply a modifier to a numeric value.
     pub fn apply(self: Modifier, v: anytype) @TypeOf(v) {
         const T = @TypeOf(v);
-        const signed = @typeInfo(T).int.signedness == .signed;
-        return switch (self) {
-            .percent => |p| percent: {
-                const p_clamped: f64 = @max(0, p);
-                const v_f64: f64 = @floatFromInt(v);
-                const applied_f64: f64 = @round(v_f64 * p_clamped);
-                const applied_T: T = @intFromFloat(applied_f64);
-                break :percent applied_T;
-            },
+        const info_T = @typeInfo(T);
+        switch (info_T) {
+            .int, .comptime_int => {
+                const signed = info_T.int.signedness == .signed;
+                return switch (self) {
+                    .percent => |p| percent: {
+                        const p_clamped: f64 = @max(0, p);
+                        const v_f64: f64 = @floatFromInt(v);
+                        const applied_f64: f64 = @round(v_f64 * p_clamped);
+                        const applied_T: T = @intFromFloat(applied_f64);
+                        break :percent applied_T;
+                    },
 
-            .absolute => |abs| absolute: {
-                const v_i64: i64 = @intCast(v);
-                const abs_i64: i64 = @intCast(abs);
-                const applied_i64: i64 = v_i64 +| abs_i64;
-                const clamped_i64: i64 = if (signed) applied_i64 else @max(0, applied_i64);
-                const applied_T: T = std.math.cast(T, clamped_i64) orelse
-                    std.math.maxInt(T) * @as(T, @intCast(std.math.sign(clamped_i64)));
-                break :absolute applied_T;
+                    .absolute => |abs| absolute: {
+                        const v_i64: i64 = @intCast(v);
+                        const abs_i64: i64 = @intCast(abs);
+                        const applied_i64: i64 = v_i64 +| abs_i64;
+                        const clamped_i64: i64 = if (signed) applied_i64 else @max(0, applied_i64);
+                        const applied_T: T = std.math.cast(T, clamped_i64) orelse
+                            std.math.maxInt(T) * @as(T, @intCast(std.math.sign(clamped_i64)));
+                        break :absolute applied_T;
+                    },
+                };
             },
-        };
+            .float, .comptime_float => {
+                return switch (self) {
+                    .percent => |p| percent: {
+                        break :percent v * @max(0, p);
+                    },
+
+                    .absolute => |abs| v + @as(T, @floatFromInt(abs)),
+                };
+            },
+            else => {}, // should never be reached
+        }
     }
 
     /// Hash using the hasher.
@@ -445,7 +464,7 @@ pub const Key = key: {
     var enumFields: [field_infos.len]std.builtin.Type.EnumField = undefined;
     var count: usize = 0;
     for (field_infos, 0..) |field, i| {
-        if (field.type != u32 and field.type != i32) continue;
+        if (field.type != u32 and field.type != i32 and field.type != f64) continue;
         enumFields[i] = .{ .name = field.name, .value = i };
         count += 1;
     }
@@ -476,7 +495,9 @@ fn init() Metrics {
         .overline_thickness = 0,
         .box_thickness = 0,
         .cursor_height = 0,
-        .icon_height = 0,
+        .face_width = 0.0,
+        .face_height = 0.0,
+        .icon_height = 0.0,
     };
 }
 

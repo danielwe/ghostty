@@ -35,6 +35,7 @@ type AttributeHash = tuple[
     float,
     float,
     float,
+    bool,
 ]
 type ResolvedSymbol = PatchSetAttributes | PatchSetScaleRules | int | None
 
@@ -50,10 +51,12 @@ class PatchSetAttributeEntry(TypedDict):
     stretch: str
     params: dict[str, float | bool]
 
-    group_x: float
-    group_y: float
-    group_width: float
-    group_height: float
+    x_in_group: float
+    y_in_group: float
+    width_in_group: float
+    height_in_group: float
+
+    align_horizontal_by_group: bool
 
 
 class PatchSet(TypedDict):
@@ -143,7 +146,7 @@ def parse_alignment(val: str) -> str | None:
     return {
         "l": ".start",
         "r": ".end",
-        "c": ".center",
+        "c": ".center_first",
         "": None,
     }.get(val, ".none")
 
@@ -158,10 +161,11 @@ def attr_key(attr: PatchSetAttributeEntry) -> AttributeHash:
         float(params.get("overlap", 0.0)),
         float(params.get("xy-ratio", -1.0)),
         float(params.get("ypadding", 0.0)),
-        float(attr.get("group_x", 0.0)),
-        float(attr.get("group_y", 0.0)),
-        float(attr.get("group_width", 1.0)),
-        float(attr.get("group_height", 1.0)),
+        float(attr.get("x_in_group", 0.0)),
+        float(attr.get("y_in_group", 0.0)),
+        float(attr.get("width_in_group", 1.0)),
+        float(attr.get("height_in_group", 1.0)),
+        bool(attr.get("align_horizontal_by_group", False)),
     )
 
 
@@ -187,10 +191,11 @@ def emit_zig_entry_multikey(codepoints: list[int], attr: PatchSetAttributeEntry)
     stretch = attr.get("stretch", "")
     params = attr.get("params", {})
 
-    group_x = attr.get("group_x", 0.0)
-    group_y = attr.get("group_y", 0.0)
-    group_width = attr.get("group_width", 1.0)
-    group_height = attr.get("group_height", 1.0)
+    x_in_group = attr.get("x_in_group", 0.0)
+    y_in_group = attr.get("y_in_group", 0.0)
+    width_in_group = attr.get("width_in_group", 1.0)
+    height_in_group = attr.get("height_in_group", 1.0)
+    align_horizontal_by_group = attr.get("align_horizontal_by_group", False)
 
     overlap = params.get("overlap", 0.0)
     xy_ratio = params.get("xy-ratio", -1.0)
@@ -204,43 +209,48 @@ def emit_zig_entry_multikey(codepoints: list[int], attr: PatchSetAttributeEntry)
 
     s = f"{keys}\n        => .{{\n"
 
-    # These translations don't quite capture the way
-    # the actual patcher does scaling, but they're a
-    # good enough compromise.
-    if "xy" in stretch:
-        s += "            .size_horizontal = .stretch,\n"
-        s += "            .size_vertical = .stretch,\n"
-    elif "!" in stretch or "^" in stretch:
-        s += "            .size_horizontal = .cover,\n"
-        s += "            .size_vertical = .fit,\n"
+    # This maps the font_patcher stretch rules to a Constrain instance
+    # NOTE: some comments in font_patcher indicate that only x or y is
+    # also a valid spec, indicating stretching in one direction only,
+    # but no icons currently use such a spec, so we don't bother
+    # including it.
+    if "pa" in stretch:
+        if "!" in stretch or overlap:
+            s += "            .size = .fit,\n"
+        else:
+            s += "            .size = .limit,\n"
+    elif "xy" in stretch:
+        s += "            .size = .stretch,\n"
     else:
-        s += "            .size_horizontal = .fit,\n"
-        s += "            .size_vertical = .fit,\n"
+        print(f"Warning: Unknown stretch rule {stretch}")
 
     # `^` indicates that scaling should fill
-    # the whole cell, not just the icon height.
+    # the whole cell, not just the icon height,
+    # even when the constraint width is 1
     if "^" not in stretch:
-        s += "            .height = .icon,\n"
+        s += "            .use_icon_height = true,\n"
 
     # There are two cases where we want to limit the constraint width to 1:
+    # - If the stretch mode is not `pa` and there's not an explicit `2`.
     # - If there's a `1` in the stretch mode string.
-    # - If the stretch mode is `xy` and there's not an explicit `2`.
-    if "1" in stretch or ("xy" in stretch and "2" not in stretch):
+    if ("pa" not in stretch and "2" not in stretch) or "1" in stretch:
         s += "            .max_constraint_width = 1,\n"
 
     if align is not None:
         s += f"            .align_horizontal = {align},\n"
+        if align_horizontal_by_group:
+            s += "            .align_horizontal_by_group = true,\n"
     if valign is not None:
         s += f"            .align_vertical = {valign},\n"
 
-    if group_width != 1.0:
-        s += f"            .group_width = {group_width:.16f},\n"
-    if group_height != 1.0:
-        s += f"            .group_height = {group_height:.16f},\n"
-    if group_x != 0.0:
-        s += f"            .group_x = {group_x:.16f},\n"
-    if group_y != 0.0:
-        s += f"            .group_y = {group_y:.16f},\n"
+    if width_in_group != 1.0:
+        s += f"            .width_in_group = {width_in_group:.16f},\n"
+    if height_in_group != 1.0:
+        s += f"            .height_in_group = {height_in_group:.16f},\n"
+    if x_in_group != 0.0:
+        s += f"            .x_in_group = {x_in_group:.16f},\n"
+    if y_in_group != 0.0:
+        s += f"            .y_in_group = {y_in_group:.16f},\n"
 
     # `overlap` and `ypadding` are mutually exclusive,
     # this is asserted in the nerd fonts patcher itself.
@@ -280,17 +290,28 @@ def generate_zig_switch_arms(
 
         entries |= {k: v for k, v in attributes.items() if isinstance(k, int)}
 
-        if entry["ScaleRules"] is not None and "ScaleGroups" in entry["ScaleRules"]:
+        if entry["ScaleRules"] is not None:
+            if "ScaleGroups" not in entry["ScaleRules"]:
+                print(f"Warning: Unknown scale rule format {entry['ScaleRules']}")
+                print("See font_patcher for scale rule format specs")
+                continue
+            # codepoints may contribute to the bounding box of multiple groups,
+            # but should always be scaled according to the first group they are
+            # found in, so we need to keep independent track of which codepoints
+            # have already been assigned a scale group
+            assigned = set()
             for group in entry["ScaleRules"]["ScaleGroups"]:
                 xMin = math.inf
                 yMin = math.inf
                 xMax = -math.inf
                 yMax = -math.inf
-                individual_bounds: dict[int, tuple[int, int, int ,int]] = {}
+                individual_bounds: dict[int, tuple[int, int, int, int]] = {}
+                individual_advances: set[float] = set()
                 for cp in group:
                     if cp not in cmap:
                         continue
                     glyph = glyphs[cmap[cp]]
+                    individual_advances.add(glyph.width)
                     bounds = BoundsPen(glyphSet=glyphs)
                     glyph.draw(bounds)
                     individual_bounds[cp] = bounds.bounds
@@ -300,16 +321,21 @@ def generate_zig_switch_arms(
                     yMax = max(bounds.bounds[3], yMax)
                 group_width = xMax - xMin
                 group_height = yMax - yMin
+                group_is_monospace = (len(individual_bounds) > 1) and (
+                    len(individual_advances) == 1
+                )
                 for cp in group:
-                    if cp not in cmap or cp not in entries:
+                    if cp in assigned or cp not in cmap or cp not in entries:
                         continue
                     this_bounds = individual_bounds[cp]
                     this_width = this_bounds[2] - this_bounds[0]
                     this_height = this_bounds[3] - this_bounds[1]
-                    entries[cp]["group_width"] = group_width / this_width
-                    entries[cp]["group_height"] = group_height / this_height
-                    entries[cp]["group_x"] = (this_bounds[0] - xMin) / group_width
-                    entries[cp]["group_y"] = (this_bounds[1] - yMin) / group_height
+                    entries[cp]["width_in_group"] = this_width / group_width
+                    entries[cp]["height_in_group"] = this_height / group_height
+                    entries[cp]["x_in_group"] = (this_bounds[0] - xMin) / group_width
+                    entries[cp]["y_in_group"] = (this_bounds[1] - yMin) / group_height
+                    entries[cp]["align_horizontal_by_group"] = group_is_monospace
+                    assigned.add(cp)
 
     del entries[0]
 
@@ -350,7 +376,7 @@ if __name__ == "__main__":
 
 const Constraint = @import("face.zig").RenderOptions.Constraint;
 
-/// Get the a constraints for the provided codepoint.
+/// Get the constraints for the provided codepoint.
 pub fn getConstraint(cp: u21) Constraint {
     return switch (cp) {
 """)

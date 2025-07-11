@@ -1221,7 +1221,9 @@ test "metrics" {
         .overline_thickness = 1,
         .box_thickness = 1,
         .cursor_height = 17,
-        .icon_height = 11,
+        .face_width = 8.0,
+        .face_height = 16.784,
+        .icon_height = 12.24,
     }, c.metrics);
 
     // Resize should change metrics
@@ -1238,7 +1240,9 @@ test "metrics" {
         .overline_thickness = 2,
         .box_thickness = 2,
         .cursor_height = 34,
-        .icon_height = 23,
+        .face_width = 16.0,
+        .face_height = 33.568,
+        .icon_height = 24.48,
     }, c.metrics);
 }
 

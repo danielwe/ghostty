@@ -273,8 +273,7 @@ pub fn renderGlyph(
             // Make the emoji as wide as possible, scaling proportionally,
             // but then scale it down as necessary if its new size exceeds
             // the cell height.
-            .size_horizontal = .cover,
-            .size_vertical = .fit,
+            .size = .fit,
 
             // Center the emoji in its cells.
             .align_horizontal = .center,
