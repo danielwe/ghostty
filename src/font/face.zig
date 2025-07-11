@@ -168,7 +168,7 @@ pub const RenderOptions = struct {
         max_constraint_width: u2 = 2,
 
         /// What to use as the height metric when constraining the glyph.
-        height: Height = .cell,
+        constraint_type: ConstraintType = .cell,
 
         pub const Size = enum {
             /// Don't change the size of this glyph.
@@ -196,194 +196,191 @@ pub const RenderOptions = struct {
             center,
         };
 
-        pub const Height = enum {
-            /// Use the full height of the cell for constraining this glyph.
+        pub const ConstraintType = enum {
+            /// Use the full size of the cell for constraining this glyph.
             cell,
-            /// Use the "icon height" from the grid metrics as the height.
+            /// Use icon constraints from the grid metrics
             icon,
         };
 
-        /// The size and position of a glyph.
-        pub const GlyphSize = struct {
+        /// Bounding box representing a size and position on the cell grid
+        pub const BoundingBox = struct {
             width: f64,
             height: f64,
             x: f64,
             y: f64,
         };
 
+        // Pad a bounding box as specified by the constraints
+        fn pad_bbox(self: Constraint, bbox: BoundingBox) BoundingBox {
+            return .{
+                .width = (1 - (self.pad_left + self.pad_right)) * bbox.width,
+                .height = (1 - (self.pad_bottom + self.pad_top)) * bbox.height,
+                .x = bbox.x + (self.pad_left * bbox.width),
+                .y = bbox.y + (self.pad_bottom * bbox.height),
+            };
+        }
+
         /// Apply this constraint to the provided glyph
         /// size, given the available width and height.
         pub fn constrain(
             self: Constraint,
-            glyph: GlyphSize,
+            glyph: BoundingBox,
             metrics: Metrics,
             /// Number of cells horizontally available for this glyph.
             constraint_width: u2,
-        ) GlyphSize {
-            var g = glyph;
+        ) BoundingBox {
+            const full_width: f64 = @floatFromInt(metrics.cell_width * @min(self.max_constraint_width, constraint_width));
+            const full_height: f64 = @floatFromInt(metrics.cell_height);
 
-            var available_width: f64 = @floatFromInt(
-                metrics.cell_width * @min(
-                    self.max_constraint_width,
-                    constraint_width,
-                ),
-            );
-            const available_height: f64 = @floatFromInt(switch (self.height) {
-                .cell => metrics.cell_height,
-                .icon => metrics.icon_height,
-            });
+            // The maximal bounding box defined by the metrics and constraints
+            const constraints: BoundingBox = switch (self.constraint_type) {
+                .cell => self.pad_bbox(.{ .width = full_width, .height = full_height, .x = 0, .y = 0 }),
+                .icon => bbox: {
+                    // Icons may be subject to stricter constraints
+                    const available_width = @min(full_width, @as(f64, @floatFromInt(metrics.icon_width)));
+                    const available_height = @min(full_height, @as(f64, @floatFromInt(metrics.icon_height)));
+                    break :bbox self.pad_bbox(.{
+                        .width = available_width,
+                        .height = available_height,
+                        .x = (full_width - available_width) / 2,
+                        .y = (full_height - available_height) / 2,
+                    });
+                },
+            };
 
-            // We use icon_width only for icon-height symbols with
-            // constraint width 2. When the constraint width is 1,
-            // icons can take the up full cell width.
-            const is_icon_width = self.height == .icon and @min(self.max_constraint_width, constraint_width) > 1;
-            const orig_avail_width = available_width;
-            if (is_icon_width) {
-                available_width = @floatFromInt(metrics.icon_width);
-            }
+            const group_width = glyph.width * self.group_width;
+            const group_height = glyph.height * self.group_height;
 
-            const w = available_width -
-                self.pad_left * available_width -
-                self.pad_right * available_width;
-            const h = available_height -
-                self.pad_top * available_height -
-                self.pad_bottom * available_height;
-
-            // Subtract padding from the bearings so that our
-            // alignment and sizing code works correctly. We
-            // re-add before returning.
-            g.x -= self.pad_left * available_width;
-            g.y -= self.pad_bottom * available_height;
-
-            // Multiply by group width and height for better sizing.
-            g.width *= self.group_width;
-            g.height *= self.group_height;
+            // The bounding box for the glyph's scale group.
+            // The point of the remainder of this function is to scale, stretch
+            // and shift this bbox to fit within the constraints, and then use
+            // the glyph's relative size and position within the group bbox to
+            // obtain its absolute position and size of in cell coordinates.
+            var group: BoundingBox = .{
+                .width = group_width,
+                .height = group_height,
+                .x = glyph.x - (group_width * self.group_x),
+                .y = glyph.y - (group_height * self.group_y),
+            };
 
             switch (self.size_horizontal) {
                 .none => {},
-                .fit => if (g.width > w) {
-                    const orig_height = g.height;
+                .fit => if (group.width > constraints.width) {
+                    const orig_height = group.height;
                     // Adjust our height and width to proportionally
                     // scale them to fit the glyph to the cell width.
-                    g.height *= w / g.width;
-                    g.width = w;
+                    group.height *= constraints.width / group.width;
+                    group.width = constraints.width;
                     // Set our x to 0 since anything else would mean
                     // the glyph extends outside of the cell width.
-                    g.x = 0;
+                    group.x = 0;
                     // Compensate our y to keep things vertically
                     // centered as they're scaled down.
-                    g.y += (orig_height - g.height) / 2;
-                } else if (g.width + g.x > w) {
+                    group.y += (orig_height - group.height) / 2;
+                } else if ((group.width + group.x) > constraints.width) {
                     // If the width of the glyph can fit in the cell but
                     // is currently outside due to the left bearing, then
                     // we reduce the left bearing just enough to fit it
                     // back in the cell.
-                    g.x = w - g.width;
-                } else if (g.x < 0) {
-                    g.x = 0;
+                    group.x = constraints.width - group.width;
+                } else if (group.x < 0) {
+                    group.x = 0;
                 },
                 .cover => {
-                    const orig_height = g.height;
+                    const orig_height = group.height;
 
-                    g.height *= w / g.width;
-                    g.width = w;
+                    group.height *= constraints.width / group.width;
+                    group.width = constraints.width;
 
-                    g.x = 0;
+                    group.x = 0;
 
-                    g.y += (orig_height - g.height) / 2;
+                    group.y += (orig_height - group.height) / 2;
                 },
                 .stretch => {
-                    g.width = w;
-                    g.x = 0;
+                    group.width = constraints.width;
+                    group.x = 0;
                 },
             }
 
             switch (self.size_vertical) {
                 .none => {},
-                .fit => if (g.height > h) {
-                    const orig_width = g.width;
+                .fit => if (group.height > constraints.height) {
+                    const orig_width = group.width;
                     // Adjust our height and width to proportionally
                     // scale them to fit the glyph to the cell height.
-                    g.width *= h / g.height;
-                    g.height = h;
+                    group.width *= constraints.height / group.height;
+                    group.height = constraints.height;
                     // Set our y to 0 since anything else would mean
                     // the glyph extends outside of the cell height.
-                    g.y = 0;
+                    group.y = 0;
                     // Compensate our x to keep things horizontally
                     // centered as they're scaled down.
-                    g.x += (orig_width - g.width) / 2;
-                } else if (g.height + g.y > h) {
+                    group.x += (orig_width - group.width) / 2;
+                } else if ((group.height + group.y) > constraints.height) {
                     // If the height of the glyph can fit in the cell but
                     // is currently outside due to the bottom bearing, then
                     // we reduce the bottom bearing just enough to fit it
                     // back in the cell.
-                    g.y = h - g.height;
-                } else if (g.y < 0) {
-                    g.y = 0;
+                    group.y = constraints.height - group.height;
+                } else if (group.y < 0) {
+                    group.y = 0;
                 },
                 .cover => {
-                    const orig_width = g.width;
+                    const orig_width = group.width;
 
-                    g.width *= h / g.height;
-                    g.height = h;
+                    group.width *= constraints.height / group.height;
+                    group.height = constraints.height;
 
-                    g.y = 0;
+                    group.y = 0;
 
-                    g.x += (orig_width - g.width) / 2;
+                    group.x += (orig_width - group.width) / 2;
                 },
                 .stretch => {
-                    g.height = h;
-                    g.y = 0;
+                    group.height = constraints.height;
+                    group.y = 0;
                 },
             }
 
-            // Add group-relative position
-            g.x += self.group_x * g.width;
-            g.y += self.group_y * g.height;
-
-            // Divide group width and height back out before we align.
-            g.width /= self.group_width;
-            g.height /= self.group_height;
-
-            if (self.max_xy_ratio) |ratio| if (g.width > g.height * ratio) {
-                const orig_width = g.width;
-                g.width = g.height * ratio;
-                g.x += (orig_width - g.width) / 2;
+            // Reduce aspect ratio if required
+            // We apply max_xy_ratio to the group rather than the individual
+            // glyph, otherwise the scale group loses meaning. In any case, no
+            // glyph that sets a max_xy_ratio is part of a scale group, so
+            // there's no practical difference between applying max_xy_ratio
+            // here or to the final glyph.
+            if (self.max_xy_ratio) |ratio| if (group.width > (group.height * ratio)) {
+                const orig_width = group.width;
+                group.width = group.height * ratio;
+                group.x += (orig_width - group.width) / 2;
             };
 
+            // Apply prescribed alignment of the group within the constraints
             switch (self.align_horizontal) {
                 .none => {},
-                .start => g.x = 0,
-                .end => g.x = w - g.width,
-                .center => g.x = (w - g.width) / 2,
+                .start => group.x = 0,
+                .end => group.x = constraints.width - group.width,
+                .center => group.x = (constraints.width - group.width) / 2,
             }
 
             switch (self.align_vertical) {
                 .none => {},
-                .start => g.y = 0,
-                .end => g.y = h - g.height,
-                .center => g.y = (h - g.height) / 2,
+                .start => group.y = 0,
+                .end => group.y = constraints.height - group.height,
+                .center => group.y = (constraints.height - group.height) / 2,
             }
 
-            // Add offset for icon width restriction, to keep it centered.
-            if (is_icon_width) {
-                g.x += (orig_avail_width - available_width) / 2;
-            }
+            // Shift origin of group bbox from constraints to cell
+            group.x += constraints.x;
+            group.y += constraints.y;
 
-            // Re-add our padding before returning.
-            g.x += self.pad_left * available_width;
-            g.y += self.pad_bottom * available_height;
-
-            // If the available height is less than the cell height, we
-            // add half of the difference to center it in the full height.
-            //
-            // If necessary, in the future, we can adjust this to account
-            // for alignment, but that isn't necessary with any of the nf
-            // icons afaict.
-            const cell_height: f64 = @floatFromInt(metrics.cell_height);
-            g.y += (cell_height - available_height) / 2;
-
-            return g;
+            // Use the glyph's relative position within the group bbox to
+            // obtain the final glyph bbox in cell coordinates
+            return .{
+                .width = group.width / self.group_width,
+                .height = group.height / self.group_height,
+                .x = group.x + self.group_x * group.width,
+                .y = group.y + self.group_y * group.height,
+            };
         }
     };
 };

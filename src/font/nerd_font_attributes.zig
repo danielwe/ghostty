@@ -25,7 +25,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .cover,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .max_constraint_width = 1,
             .align_horizontal = .center,
             .align_vertical = .center,
@@ -429,7 +429,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
         },
@@ -437,7 +437,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.3315669947009841,
@@ -449,7 +449,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.1913145539906103,
@@ -461,7 +461,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0639412997903563,
@@ -474,7 +474,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.3029525032092426,
@@ -486,7 +486,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.1639908256880733,
@@ -498,7 +498,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.1639908256880733,
@@ -511,7 +511,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 2.4457831325301207,
@@ -523,7 +523,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.9556840077071291,
@@ -535,7 +535,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.2412121212121212,
@@ -547,7 +547,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0049115913555993,
@@ -558,7 +558,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.8979591836734695,
@@ -570,7 +570,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.8979591836734695,
@@ -581,7 +581,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0049115913555993,
@@ -593,7 +593,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.4152542372881356,
@@ -603,7 +603,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_height = 1.1390433815350389,
@@ -613,7 +613,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.3635153129161119,
@@ -626,7 +626,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_height = 2.0197238658777121,
@@ -636,7 +636,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 2.0098619329388558,
@@ -646,7 +646,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 2.0098619329388558,
@@ -658,7 +658,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 2.8826979472140764,
@@ -670,7 +670,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.1441340782122904,
@@ -682,7 +682,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0723270440251573,
@@ -693,7 +693,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_height = 1.0000418544302916,
@@ -703,7 +703,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 2.8615369874243446,
@@ -715,7 +715,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0722513089005237,
@@ -726,7 +726,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.2487804878048780,
@@ -737,7 +737,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0004882812500000,
@@ -747,7 +747,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0004882812500000,
@@ -758,7 +758,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0004882812500000,
@@ -769,7 +769,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.6018762826150690,
@@ -779,7 +779,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0006976906439684,
@@ -791,7 +791,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.1029147024980515,
@@ -803,7 +803,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0004882812500000,
@@ -814,7 +814,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.6007812500000000,
@@ -826,7 +826,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.1436671384194865,
@@ -838,7 +838,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.8765709864847797,
@@ -853,7 +853,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0005935142780173,
@@ -864,7 +864,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0014662756598240,
@@ -876,7 +876,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0717654378877508,
@@ -888,7 +888,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_height = 1.1428571428571428,
@@ -898,7 +898,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_height = 1.0810546875000000,
@@ -907,7 +907,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.7506617925122907,
@@ -918,7 +918,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0009775171065494,
@@ -928,7 +928,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.1433271023627367,
@@ -940,7 +940,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0005760656161586,
@@ -952,7 +952,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0005935142780173,
@@ -963,7 +963,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0005935142780173,
@@ -974,7 +974,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_height = 1.5014662756598240,
@@ -984,7 +984,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.2253421114919656,
@@ -996,7 +996,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.3336843856081169,
@@ -1006,7 +1006,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0005148743038617,
@@ -1018,7 +1018,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0000770970394737,
@@ -1029,7 +1029,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0344231791600214,
@@ -1039,7 +1039,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0004538836055876,
@@ -1051,7 +1051,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.0005935142780173,
@@ -1062,7 +1062,7 @@ pub fn getConstraint(cp: u21) Constraint {
         => .{
             .size_horizontal = .fit,
             .size_vertical = .fit,
-            .height = .icon,
+            .constraint_type = .icon,
             .align_horizontal = .center,
             .align_vertical = .center,
             .group_width = 1.2427184466019416,

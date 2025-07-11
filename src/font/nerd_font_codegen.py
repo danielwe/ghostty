@@ -220,7 +220,7 @@ def emit_zig_entry_multikey(codepoints: list[int], attr: PatchSetAttributeEntry)
     # `^` indicates that scaling should fill
     # the whole cell, not just the icon height.
     if "^" not in stretch:
-        s += "            .height = .icon,\n"
+        s += "            .constraint_type = .icon,\n"
 
     # There are two cases where we want to limit the constraint width to 1:
     # - If there's a `1` in the stretch mode string.
