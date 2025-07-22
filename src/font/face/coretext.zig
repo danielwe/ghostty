@@ -340,8 +340,6 @@ pub const Face = struct {
             };
 
         const metrics = opts.grid_metrics;
-        const cell_width: f64 = @floatFromInt(metrics.cell_width);
-        // const cell_height: f64 = @floatFromInt(metrics.cell_height);
 
         // We eliminate any negative vertical padding since these overlap
         // values aren't needed under CoreText with how precisely we apply
@@ -350,7 +348,7 @@ pub const Face = struct {
         var constraint = opts.constraint;
         constraint.pad_top = @max(0.0, constraint.pad_top);
         constraint.pad_bottom = @max(0.0, constraint.pad_bottom);
-        const glyph_size = constraint.constrain(
+        var glyph_size = constraint.constrain(
             .{
                 .width = rect.size.width,
                 .height = rect.size.height,
@@ -361,75 +359,52 @@ pub const Face = struct {
             opts.constraint_width,
         );
 
-        // These calculations are an attempt to mostly imitate the effect of
-        // `shouldSubpixelQuantizeFonts`[^1], which helps maximize legibility
-        // at small pixel sizes (low DPI). We do this math ourselves instead
-        // of letting CoreText do it because it's not entirely clear how the
-        // math in CoreText works and we've run in to edge cases where glyphs
-        // have their bottom or left row cut off due to bad rounding.
+        // Nudge the glyph by half the pixel-rounding width, such that
+        // pixel rounding is applied symmetrically to single-width glyphs.
+        // This ensures symmetric rasterization of centered and symmetric
+        // characters like a typical upright M.
         //
-        // This math seems to have a mostly comparable result to whatever it
-        // is that CoreText does, and is even (in my opinion) better in some
-        // cases.
+        // If the constraint includes horizontal alignment, we assume that
+        // alignment has been fully taken care of and skip this adjustment.
+        if (constraint.align_horizontal == .none) {
+            glyph_size.x += (@ceil(metrics.face_width) - metrics.face_width) / 2;
+        }
+
+        // For drawing the glyph, we need a canvas large enough to fit the
+        // glyph's bounding box with the same relative alignment to pixel
+        // boundaries as it will have in the cell.
         //
-        // I'm not entirely certain but I suspect that when you enable the
-        // CoreText option it also does some sort of rudimentary hinting,
-        // but it doesn't seem to make that big of a difference in terms
-        // of legibility in the end.
-        //
-        // [^1]: https://developer.apple.com/documentation/coregraphics/cgcontext/setshouldsubpixelquantizefonts(_:)?language=objc
+        // First, we separate the integer and fractional part of the glyph's
+        // position. However, we want a margin of at least half a pixel width
+        // for antialiasing and subpixel quantization to work with, so we
+        // subtract 0.5 to get a "fractional" part between 0.5 and 1.5.
+        const glyph_x_int = @floor(glyph_size.x - 0.5);
+        const glyph_y_int = @floor(glyph_size.y - 0.5);
 
-        // We only want to apply quantization if we don't have any
-        // constraints and this isn't a bitmap glyph, since CoreText
-        // doesn't seem to apply its quantization to bitmap glyphs.
-        //
-        // TODO: Maybe gate this so it only applies at small font sizes,
-        //       or else offer a user config option that can disable it.
-        const should_quantize = !sbix and std.meta.eql(opts.constraint, .none);
+        const glyph_x_frac = glyph_size.x - glyph_x_int;
+        const glyph_y_frac = glyph_size.y - glyph_y_int;
 
-        // We offset our glyph by its bearings when we draw it, using `@floor`
-        // here rounds it *up* since we negate it right outside. Moving it by
-        // whole pixels ensures that we don't disturb the pixel alignment of
-        // the glyph, fractional pixels will still be drawn on all sides as
-        // necessary.
-        const draw_x = -@floor(rect.origin.x);
-        const draw_y = -@floor(rect.origin.y);
+        // To obtain the canvas dimensions, we add the fractional parts to the
+        // glyph size, add 0.5 to ensure the same margin on the right and top,
+        // and take the ceiling to get a whole number of pixels.
+        const canvas_width: u32 = @intFromFloat(@ceil(glyph_size.width + glyph_x_frac + 0.5));
+        const canvas_height: u32 = @intFromFloat(@ceil(glyph_size.height + glyph_y_frac + 0.5));
 
-        // We use `x` and `y` for our full pixel bearings post-raster.
-        // We need to subtract the fractional pixel of difference from
-        // the edge of the draw area to the edge of the actual glyph.
-        const frac_x = rect.origin.x + draw_x;
-        const frac_y = rect.origin.y + draw_y;
-        const x = glyph_size.x - frac_x;
-        const y = glyph_size.y - frac_y;
+        // The glyph will be drawn based on its original dimensions as given by
+        // `rect`. In CoreGraphics jargon, these dimensions are in user space,
+        // while the pixel unit measurements from the rescaled and realigned
+        // `glyph` are in device space. We need the following scale factors to
+        // translate between the spaces.
+        const scale_x = glyph_size.width / rect.size.width;
+        const scale_y = glyph_size.height / rect.size.height;
 
-        // We never modify the width.
-        //
-        // When using the CoreText option the widths do seem to be
-        // modified extremely subtly, but even at very small font
-        // sizes it's hardly a noticeable difference.
-        const width = glyph_size.width;
-
-        // If the top of the glyph (taking in to account the y position)
-        // is within half a pixel of an exact pixel edge, we round up the
-        // height, otherwise leave it alone.
-        //
-        // This seems to match what CoreText does.
-        const frac_top = (glyph_size.height + frac_y) - @floor(glyph_size.height + frac_y);
-        const height =
-            if (should_quantize)
-                if (frac_top >= 0.5)
-                    glyph_size.height + 1 - frac_top
-                else
-                    glyph_size.height
-            else
-                glyph_size.height;
-
-        // Add the fractional pixel to the width and height and take
-        // the ceiling to get a canvas size that will definitely fit
-        // our drawn glyph.
-        const px_width: u32 = @intFromFloat(@ceil(width + frac_x));
-        const px_height: u32 = @intFromFloat(@ceil(height + frac_y));
+        // We offset our glyph by its bearings when we draw it, such that
+        // (draw_x + rect.origin.x, draw_y + rect.origin.y) equals the user
+        // space coordinates of origin of the glyph on the canvas. The device
+        // space coordinates of this point are (glyph_x_frac, glyph_y_frac),
+        // which we transform to user space using the above scale factors.
+        const draw_x = (glyph_x_frac / scale_x) - rect.origin.x;
+        const draw_y = (glyph_y_frac / scale_y) - rect.origin.y;
 
         // Settings that are specific to if we are rendering text or emoji.
         const color: struct {
@@ -464,17 +439,17 @@ pub const Face = struct {
         // usually stabilizes pretty quickly and is very infrequent so I think
         // the allocation overhead is acceptable compared to the cost of
         // caching it forever or having to deal with a cache lifetime.
-        const buf = try alloc.alloc(u8, px_width * px_height * color.depth);
+        const buf = try alloc.alloc(u8, canvas_width * canvas_height * color.depth);
         defer alloc.free(buf);
         @memset(buf, 0);
 
         const context = macos.graphics.BitmapContext.context;
         const ctx = try macos.graphics.BitmapContext.create(
             buf,
-            px_width,
-            px_height,
+            canvas_width,
+            canvas_height,
             8,
-            px_width * color.depth,
+            canvas_width * color.depth,
             color.space,
             color.context_opts,
         );
@@ -489,8 +464,8 @@ pub const Face = struct {
         context.fillRect(ctx, .{
             .origin = .{ .x = 0, .y = 0 },
             .size = .{
-                .width = @floatFromInt(px_width),
-                .height = @floatFromInt(px_height),
+                .width = @floatFromInt(canvas_width),
+                .height = @floatFromInt(canvas_height),
             },
         });
 
@@ -506,9 +481,25 @@ pub const Face = struct {
         context.setAllowsFontSubpixelPositioning(ctx, true);
         context.setShouldSubpixelPositionFonts(ctx, true);
 
-        // See comments about quantization earlier in the function.
-        context.setAllowsFontSubpixelQuantization(ctx, false);
-        context.setShouldSubpixelQuantizeFonts(ctx, false);
+        // What does CoreText's subpixel quantization actually do? [^1]
+        //
+        // I'm not entirely certain but I suspect that when you enable it,
+        // it also does some sort of rudimentary hinting, but it doesn't
+        // seem to make that big of a difference in terms of legibility
+        // in the end.
+        //
+        // [^1]: https://developer.apple.com/documentation/coregraphics/cgcontext/setshouldsubpixelquantizefonts(_:)?language=objc
+        //
+        // We only want to apply quantization if this isn't a bitmap glyph,
+        // since CoreText doesn't seem to apply its quantization to bitmap
+        // glyphs.
+        //
+        // TODO: Should this also be turned off for glyphs with constraints?
+        //
+        // TODO: Maybe gate this so it only applies at small font sizes,
+        //       or else offer a user config option that can disable it.
+        context.setAllowsFontSubpixelQuantization(ctx, true);
+        context.setShouldSubpixelQuantizeFonts(ctx, !sbix);
 
         // Anti-aliasing is self explanatory.
         context.setAllowsAntialiasing(ctx, true);
@@ -531,24 +522,24 @@ pub const Face = struct {
             context.setLineWidth(ctx, line_width);
         }
 
-        // Scale the drawing context so that when we draw
-        // our glyph it's stretched to the constrained size.
+        // Set the scaling factors from user space
+        // to device space for the drawing context
         context.scaleCTM(
             ctx,
-            width / rect.size.width,
-            height / rect.size.height,
+            scale_x,
+            scale_y,
         );
 
         // Draw our glyph.
         self.font.drawGlyphs(&glyphs, &.{.{ .x = draw_x, .y = draw_y }}, ctx);
 
         // Write our rasterized glyph to the atlas.
-        const region = try atlas.reserve(alloc, px_width, px_height);
+        const region = try atlas.reserve(alloc, canvas_width, canvas_height);
         atlas.set(region, buf);
 
         // This should be the distance from the bottom of
         // the cell to the top of the glyph's bounding box.
-        const offset_y: i32 = @as(i32, @intFromFloat(@round(y))) + @as(i32, @intCast(px_height));
+        const offset_y = @as(i32, @intFromFloat(glyph_y_int)) + @as(i32, @intCast(canvas_height));
 
         // This should be the distance from the left of
         // the cell to the left of the glyph's bounding box.
@@ -566,10 +557,9 @@ pub const Face = struct {
             // We don't do this if the constraint has a horizontal alignment,
             // since in that case the position was already calculated with the
             // new cell width in mind.
-            if (opts.constraint.align_horizontal == .none) {
+            if (constraint.align_horizontal == .none) {
                 const advance = self.font.getAdvancesForGlyphs(.horizontal, &glyphs, null);
-                const new_advance =
-                    cell_width * @as(f64, @floatFromInt(opts.cell_width orelse 1));
+                const new_advance: f64 = @floatFromInt(metrics.cell_width * (opts.cell_width orelse 1));
                 // If the original advance is greater than the cell width then
                 // it's possible that this is a ligature or other glyph that is
                 // intended to overflow the cell to one side or the other, and
@@ -579,19 +569,19 @@ pub const Face = struct {
                 // We also don't want to do anything if the advance is zero or
                 // less, since this is used for stuff like combining characters.
                 if (advance > new_advance or advance <= 0.0) {
-                    break :offset_x @intFromFloat(@round(x));
+                    break :offset_x @intFromFloat(glyph_x_int);
                 }
                 break :offset_x @intFromFloat(
-                    @round(x + (new_advance - advance) / 2),
+                    glyph_x_int + @floor((new_advance - advance) / 2),
                 );
             } else {
-                break :offset_x @intFromFloat(@round(x));
+                break :offset_x @intFromFloat(glyph_x_int);
             }
         };
 
         return .{
-            .width = px_width,
-            .height = px_height,
+            .width = canvas_width,
+            .height = canvas_height,
             .offset_x = offset_x,
             .offset_y = offset_y,
             .atlas_x = region.x,
