@@ -697,6 +697,13 @@ pub const Face = struct {
         ) >> 6);
     }
 
+    fn unitsToPxYF64(self: Face, units: i32) f64 {
+        return f26dot6ToF64(freetype.mulFix(
+            units,
+            @intCast(self.face.handle.*.size.*.metrics.y_scale),
+        ));
+    }
+
     /// Convert 26.6 pixel format to f32
     fn f26dot6ToFloat(v: freetype.c.FT_F26Dot6) f32 {
         return @floatFromInt(v >> 6);
@@ -710,6 +717,112 @@ pub const Face = struct {
         CopyTableError,
     };
 
+    pub fn getFTMetrics(self: *Face) font.Metrics.FaceMetrics {
+        const face = self.face;
+
+        const size_metrics = face.handle.*.size.*.metrics;
+
+        // This code relies on this assumption, and it should always be
+        // true since we don't do any non-uniform scaling on the font ever.
+        assert(size_metrics.x_ppem == size_metrics.y_ppem);
+
+        const px_per_em: f64 = @floatFromInt(size_metrics.y_ppem);
+
+        const cell_width: f64 = cell_width: {
+            self.ft_mutex.lock();
+            defer self.ft_mutex.unlock();
+
+            var max: f64 = 0.0;
+            var c: u8 = ' ';
+            while (c < 127) : (c += 1) {
+                if (face.getCharIndex(c)) |glyph_index| {
+                    if (face.loadGlyph(glyph_index, .{
+                        .render = false,
+                        .no_svg = true,
+                    })) {
+                        max = @max(
+                            f26dot6ToF64(face.handle.*.glyph.*.advance.x),
+                            max,
+                        );
+                    } else |_| {}
+                }
+            }
+
+            // If we couldn't get any widths, just use FreeType's max_advance.
+            if (max == 0.0) {
+                break :cell_width f26dot6ToF64(size_metrics.max_advance);
+            }
+
+            break :cell_width max;
+        };
+
+        // We use the cap and ex heights specified by the font if they're
+        // available, otherwise we try to measure the `H` and `x` glyphs.
+        const cap_height = cap: {
+            self.ft_mutex.lock();
+            defer self.ft_mutex.unlock();
+            if (face.getCharIndex('H')) |glyph_index| {
+                if (face.loadGlyph(glyph_index, .{
+                    .render = false,
+                    .no_svg = true,
+                })) {
+                    break :cap f26dot6ToF64(face.handle.*.glyph.*.metrics.height);
+                } else |_| {}
+            }
+            break :cap null;
+        };
+        const ex_height = ex: {
+            self.ft_mutex.lock();
+            defer self.ft_mutex.unlock();
+            if (face.getCharIndex('x')) |glyph_index| {
+                if (face.loadGlyph(glyph_index, .{
+                    .render = false,
+                    .no_svg = true,
+                })) {
+                    break :ex f26dot6ToF64(face.handle.*.glyph.*.metrics.height);
+                } else |_| {}
+            }
+            break :ex null;
+        };
+
+        // Measure "水" (CJK water ideograph, U+6C34) for our ic width.
+        const ic_width = ic_width: {
+            self.ft_mutex.lock();
+            defer self.ft_mutex.unlock();
+
+            const glyph = face.getCharIndex('水') orelse break :ic_width null;
+
+            face.loadGlyph(glyph, .{
+                .render = false,
+                .no_svg = true,
+            }) catch break :ic_width null;
+
+            break :ic_width f26dot6ToF64(face.handle.*.glyph.*.advance.x);
+        };
+
+        return .{
+            .px_per_em = px_per_em,
+
+            .cell_width = cell_width,
+
+            // .ascent = f26dot6ToF64(size_metrics.ascender),
+            // .descent = f26dot6ToF64(size_metrics.descender),
+            .ascent = self.unitsToPxY(face.handle.*.ascender),
+            .descent = self.unitsToPxY(face.handle.*.descender),
+            .line_gap = f26dot6ToF64(size_metrics.height),
+
+            .underline_position = null,
+            .underline_thickness = null,
+
+            .strikethrough_position = null,
+            .strikethrough_thickness = null,
+
+            .cap_height = cap_height,
+            .ex_height = ex_height,
+            .ic_width = ic_width,
+        };
+    }
+
     /// Get the `FaceMetrics` for this face.
     pub fn getMetrics(self: *Face) GetMetricsError!font.Metrics.FaceMetrics {
         const face = self.face;
@@ -721,10 +834,10 @@ pub const Face = struct {
         assert(size_metrics.x_ppem == size_metrics.y_ppem);
 
         // Read the 'head' table out of the font data.
-        const head = face.getSfntTable(.head) orelse return error.CopyTableError;
+        const head = face.getSfntTable(.head) orelse return self.getFTMetrics();
 
         // Read the 'post' table out of the font data.
-        const post = face.getSfntTable(.post) orelse return error.CopyTableError;
+        const post = face.getSfntTable(.post) orelse return self.getFTMetrics();
 
         // Read the 'OS/2' table out of the font data.
         const os2_: ?*freetype.c.TT_OS2 = os2: {
@@ -734,7 +847,7 @@ pub const Face = struct {
         };
 
         // Read the 'hhea' table out of the font data.
-        const hhea = face.getSfntTable(.hhea) orelse return error.CopyTableError;
+        const hhea = face.getSfntTable(.hhea) orelse return self.getFTMetrics();
 
         const units_per_em = head.Units_Per_EM;
         const px_per_em: f64 = @floatFromInt(size_metrics.y_ppem);
