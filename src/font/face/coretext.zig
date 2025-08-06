@@ -304,6 +304,8 @@ pub const Face = struct {
         const is_color = self.isColorGlyph(glyph_index);
         // And whether it's (probably) a bitmap (sbix).
         const sbix = is_color and self.color != null and self.color.?.sbix;
+        // And whether it's a nerd font icon
+        const is_icon = !std.meta.eql(opts.constraint, .none);
 
         // If we're rendering a synthetic bold then we will gain 50% of
         // the line width on every edge, which means we should increase
@@ -321,9 +323,10 @@ pub const Face = struct {
 
         // We make an assumption that font smoothing ("thicken")
         // adds no more than 1 extra pixel to any edge. We don't
-        // add extra size if it's a sbix color font though, since
-        // bitmaps aren't affected by smoothing.
-        if (opts.thicken and !sbix) {
+        // add extra size if it's a sbix color font or icon, though,
+        // since bitmaps aren't affected by smoothing and we opt out
+        // for icons.
+        if (opts.thicken and !sbix and !is_icon) {
             rect.size.width += 2.0;
             rect.size.height += 2.0;
             rect.origin.x -= 1.0;
@@ -479,7 +482,7 @@ pub const Face = struct {
         // it's just something that makes the text look closer to system
         // applications if users want that.
         context.setAllowsFontSmoothing(ctx, true);
-        context.setShouldSmoothFonts(ctx, opts.thicken);
+        context.setShouldSmoothFonts(ctx, opts.thicken and !sbix and !is_icon);
 
         // Subpixel positioning allows glyphs to be placed at non-integer
         // coordinates. We need this for our alignment.
@@ -499,12 +502,10 @@ pub const Face = struct {
         // since CoreText doesn't seem to apply its quantization to bitmap
         // glyphs.
         //
-        // TODO: Should this also be turned off for glyphs with constraints?
-        //
         // TODO: Maybe gate this so it only applies at small font sizes,
         //       or else offer a user config option that can disable it.
         context.setAllowsFontSubpixelQuantization(ctx, true);
-        context.setShouldSubpixelQuantizeFonts(ctx, !sbix);
+        context.setShouldSubpixelQuantizeFonts(ctx, !sbix and !is_icon);
 
         // Anti-aliasing is self explanatory.
         context.setAllowsAntialiasing(ctx, true);
@@ -522,10 +523,10 @@ pub const Face = struct {
 
         // If we are drawing with synthetic bold then use a fill stroke
         // which strokes the outlines of the glyph making a more bold look.
-        if (self.synthetic_bold) |line_width| {
+        if (!is_icon) if (self.synthetic_bold) |line_width| {
             context.setTextDrawingMode(ctx, .fill_stroke);
             context.setLineWidth(ctx, line_width);
-        }
+        };
 
         // Set the scaling factors from user space
         // to device space for the drawing context
