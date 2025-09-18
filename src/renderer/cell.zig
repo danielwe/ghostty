@@ -275,7 +275,7 @@ pub fn constraintWidth(cell_pin: terminal.Pin) u2 {
     // If we have a previous cell and it was a symbol then we need
     // to also constrain. This is so that multiple PUA glyphs align.
     // As an exception, we ignore powerline glyphs since they are
-    // used for box drawing and we consider them whitespace.
+    // used for box drawing and aren't symbols as such.
     if (cell_pin.x > 0) prev: {
         const prev_cp = prev_cp: {
             var copy = cell_pin;
@@ -284,7 +284,7 @@ pub fn constraintWidth(cell_pin: terminal.Pin) u2 {
             break :prev_cp prev_cell.codepoint();
         };
 
-        // We consider powerline glyphs whitespace.
+        // We don't consider powerline glyphs symbols.
         if (isPowerline(prev_cp)) break :prev;
 
         if (isSymbol(prev_cp)) {
@@ -300,10 +300,7 @@ pub fn constraintWidth(cell_pin: terminal.Pin) u2 {
         const next_cell = copy.rowAndCell().cell;
         break :next_cp next_cell.codepoint();
     };
-    if (next_cp == 0 or
-        isSpace(next_cp) or
-        isPowerline(next_cp))
-    {
+    if (next_cp == 0 or isSpace(next_cp)) {
         return 2;
     }
 
