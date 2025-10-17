@@ -36,6 +36,9 @@ class SurfaceScrollView: NSView {
         scrollView.usesPredominantAxisScrolling = true
         // hide default background to show blur effect properly
         scrollView.drawsBackground = false
+        // Don't apply content insets. This is necessary for the content view
+        // to match the surface view if we have the "hidden" titlebar style.
+        scrollView.automaticallyAdjustsContentInsets = false
         
         // The document view is what the scrollview is actually going
         // to be directly scrolling. We set it up to a "blank" NSView
@@ -118,11 +121,6 @@ class SurfaceScrollView: NSView {
     deinit {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
-
-    // The entire bounds is a safe area, so we override any default
-    // insets. This is necessary for the content view to match the
-    // surface view if we have the "hidden" titlebar style.
-    override var safeAreaInsets: NSEdgeInsets { return NSEdgeInsetsZero }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
