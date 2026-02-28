@@ -381,7 +381,7 @@ pub const Face = struct {
             .target = if (self.load_flags.monochrome)
                 .mono
             else if (self.load_flags.light)
-                .light
+                .lcd
             else
                 .normal,
 
@@ -570,6 +570,8 @@ pub const Face = struct {
                 try self.face.renderGlyph(
                     if (self.load_flags.monochrome)
                         .mono
+                    else if (self.load_flags.light)
+                        .lcd
                     else
                         .normal,
                 );
